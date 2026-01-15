@@ -304,9 +304,10 @@ class LocalSource(
                             chapterFile.nameWithoutExtension
                         }
                     date_upload = chapterFile.lastModified()
+                    val cleanedName = name.replace("\\([^)]*\\)".toRegex(), "").trim()
                     chapter_number =
                         ChapterRecognition
-                            .parseChapterNumber(manga.title, this.name, this.chapter_number.toDouble())
+                            .parseChapterNumber(manga.title, this.cleanedName, this.chapter_number.toDouble())
                             .toFloat()
 
                     val format = Format.valueOf(chapterFile)
