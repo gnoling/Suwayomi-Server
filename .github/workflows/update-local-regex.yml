@@ -1,0 +1,52 @@
+name: Keep local-regex updated
+
+on:
+  schedule:
+    # Every hour
+    - cron: '10 * * * *'
+
+  # Allow manual runs from the Actions tab
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream
+        run: |
+          git remote add upstream https://github.com/Suwayomi/Suwayomi-Server.git
+
+      - name: Fetch all branches
+        run: |
+          git fetch origin
+          git fetch upstream
+
+      - name: Sync master with upstream
+        run: |
+          git checkout master
+          git reset --hard upstream/master
+          git push origin master
+
+      - name: Update local-regex
+        run: |
+          git checkout local-regex
+
+          # Merge the updated master
+          git merge origin/master --no-edit
+
+          git push origin local-regex
