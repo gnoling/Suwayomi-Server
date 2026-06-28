@@ -155,7 +155,16 @@ object Extension {
 
             var contentWarning = packageInfo.applicationInfo.metaData.getInt(METADATA_CONTENT_WARNING)
             if (contentWarning == 0) {
-                contentWarning = packageInfo.applicationInfo.metaData.getInt(METADATA_NSFW)
+                contentWarning = packageInfo.applicationInfo.metaData
+                    .getString(METADATA_CONTENT_WARNING)
+                    ?.toIntOrNull()
+                    ?: 0
+                if (contentWarning == 0) {
+                    contentWarning = packageInfo.applicationInfo.metaData
+                        .getString(METADATA_NSFW)
+                        ?.toIntOrNull()
+                        ?: 0
+                }
             }
 
             val className =
@@ -165,7 +174,7 @@ object Extension {
 
             dex2jar(apkFilePath, jarFilePath, fileNameWithoutType)
             extractAssetsFromApk(apkFilePath, jarFilePath)
-            extractAndCacheApkIcon(apkFilePath, apkName)
+            extractAndCacheApkIcon(apkFilePath, packageInfo.packageName)
 
             // clean up
             File(apkFilePath).delete()
@@ -257,7 +266,7 @@ object Extension {
 
     private fun extractAndCacheApkIcon(
         apkFilePath: String,
-        apkName: String,
+        pkgName: String,
     ) {
         val iconCacheDir = "${applicationDirs.extensionsRoot}/icon"
         try {
@@ -270,15 +279,15 @@ object Extension {
                         ?.first
                 }
             if (iconData == null) {
-                logger.warn { "No icon found in APK $apkName" }
+                logger.warn { "No icon found in APK $pkgName" }
                 return
             }
 
             File(iconCacheDir).mkdirs()
-            clearCachedImage(iconCacheDir, apkName)
-            saveImage("$iconCacheDir/$apkName", iconData.inputStream(), null)
+            clearCachedImage(iconCacheDir, pkgName)
+            saveImage("$iconCacheDir/$pkgName", iconData.inputStream(), null)
         } catch (e: Exception) {
-            logger.warn(e) { "Failed to extract icon from APK $apkName" }
+            logger.warn(e) { "Failed to extract icon from APK $pkgName" }
         }
     }
 
@@ -371,7 +380,7 @@ object Extension {
 
                 SourceTable.deleteWhere { SourceTable.extension eq extensionId }
 
-                if (extensionRecord[ExtensionTable.isObsolete]) {
+                if (extensionRecord[ExtensionTable.isObsolete] || extensionRecord[ExtensionTable.apkUrl] == null) {
                     ExtensionTable.deleteWhere { ExtensionTable.pkgName eq pkgName }
                 } else {
                     ExtensionTable.update({ ExtensionTable.pkgName eq pkgName }) {
