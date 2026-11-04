@@ -27,16 +27,48 @@ object BytecodeEditor {
      * @param jarFile The JarFile to replace class references in
      */
     fun fixAndroidClasses(jarFile: Path) {
-        FileSystems.newFileSystem(jarFile, null as ClassLoader?)?.use {
-            Files
-                .walk(it.getPath("/"))
-                .asSequence()
-                .filterNotNull()
-                .filterNot(Files::isDirectory)
-                .mapNotNull(::getClassBytes)
-                .map(::transform)
-                .forEach(::write)
+        FileSystems.newFileSystem(jarFile, null as ClassLoader?)?.use { fs ->
+            val changed =
+                Files.walk(fs.getPath("/")).use { paths ->
+                    paths
+                        .asSequence()
+                        .filterNotNull()
+                        .filterNot(Files::isDirectory)
+                        .mapNotNull(::getClassBytes)
+                        .filter { referencesReplacedClass(it.second) }
+                        .map(::transform)
+                        .onEach(::write)
+                        .count()
+                }
+            if (changed > 0) {
+                logger.debug { "Replaced Android class references in $changed classes of $jarFile" }
+                // Extensions distributed as signed jars would otherwise fail the class loader's digest check
+                removeSignature(fs.getPath("/META-INF"))
+            }
         }
+    }
+
+    private val signatureFileExtensions = setOf("SF", "RSA", "DSA", "EC")
+
+    private fun removeSignature(metaInf: Path) {
+        if (!Files.isDirectory(metaInf)) return
+        Files
+            .list(metaInf)
+            .use { files ->
+                files
+                    .asSequence()
+                    .filter { it.fileName.toString().substringAfterLast('.').uppercase() in signatureFileExtensions }
+                    .toList()
+            }.forEach(Files::delete)
+    }
+
+    /**
+     * Cheap pre-check so only classes that need it are rewritten: class names in the
+     * constant pool are stored as (ASCII) UTF-8.
+     */
+    private fun referencesReplacedClass(bytes: ByteArray): Boolean {
+        val text = String(bytes, Charsets.ISO_8859_1)
+        return classesToReplace.any { text.contains(it) }
     }
 
     /**
