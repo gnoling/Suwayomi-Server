@@ -790,7 +790,20 @@ class KcefWebViewProvider(
     override fun insertVisualStateCallback(
         requestId: Long,
         callback: VisualStateCallback,
-    ): Unit = throw RuntimeException("Stub!")
+    ) {
+        // Android fires this once all DOM changes made before the call are visible.
+        // We render offscreen, so the closest equivalent is a round-trip through the
+        // renderer process: once a trivial script returns, everything queued before it
+        // has been processed.
+        val b = browser
+        if (b == null) {
+            handler.post { callback.onComplete(requestId) }
+            return
+        }
+        b.evaluateJavaScript("0") {
+            handler.post { callback.onComplete(requestId) }
+        }
+    }
 
     override fun clearView(): Unit = throw RuntimeException("Stub!")
 
