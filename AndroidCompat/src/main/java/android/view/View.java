@@ -4350,7 +4350,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     }
 
     public Resources getResources() {
-        throw new RuntimeException("Stub!");
+        Resources resources = mContext != null ? mContext.getResources() : null;
+        return resources != null ? resources : xyz.nulldev.androidcompat.res.CompatResources.INSTANCE;
     }
 
     @Override

@@ -76,6 +76,7 @@ import org.cef.handler.CefResourceHandler
 import org.cef.handler.CefResourceHandlerAdapter
 import org.cef.handler.CefResourceRequestHandler
 import org.cef.handler.CefResourceRequestHandlerAdapter
+import org.cef.input.CefTouchEvent
 import org.cef.misc.BoolRef
 import org.cef.misc.IntRef
 import org.cef.misc.StringRef
@@ -84,6 +85,7 @@ import org.cef.network.CefPostDataElement
 import org.cef.network.CefRequest
 import org.cef.network.CefResponse
 import org.koin.mp.KoinPlatformTools
+import xyz.nulldev.androidcompat.res.CompatResources
 import java.awt.Rectangle
 import java.io.BufferedWriter
 import java.io.File
@@ -95,6 +97,7 @@ import kotlin.math.min
 import kotlin.reflect.KFunction
 import kotlin.reflect.full.declaredMemberFunctions
 import kotlin.reflect.jvm.javaMethod
+import xyz.nulldev.androidcompat.replace.android.view.MotionEvent as CompatMotionEvent
 
 class KcefWebViewProvider(
     private val view: WebView,
@@ -558,7 +561,8 @@ class KcefWebViewProvider(
     }
 
     private class RenderHandler : CefRenderHandlerAdapter() {
-        override fun getViewRect(browser: CefBrowser): Rectangle = Rectangle(0, 0, 1280, 2856)
+        override fun getViewRect(browser: CefBrowser): Rectangle =
+            Rectangle(0, 0, CompatResources.WIDTH_PIXELS, CompatResources.HEIGHT_PIXELS)
 
         override fun onPaint(
             browser: CefBrowser,
@@ -803,6 +807,52 @@ class KcefWebViewProvider(
         b.evaluateJavaScript("0") {
             handler.post { callback.onComplete(requestId) }
         }
+    }
+
+    override fun dispatchTouchEvent(event: CompatMotionEvent): Boolean {
+        val b = browser ?: return false
+        val masked = event.actionMasked
+        val type =
+            when (masked) {
+                CompatMotionEvent.ACTION_DOWN, CompatMotionEvent.ACTION_POINTER_DOWN -> CefTouchEvent.EventType.PRESSED
+                CompatMotionEvent.ACTION_UP, CompatMotionEvent.ACTION_POINTER_UP -> CefTouchEvent.EventType.RELEASED
+                CompatMotionEvent.ACTION_MOVE -> CefTouchEvent.EventType.MOVED
+                CompatMotionEvent.ACTION_CANCEL -> CefTouchEvent.EventType.CANCELLED
+                else -> return false
+            }
+        if (masked == CompatMotionEvent.ACTION_DOWN) {
+            b.setFocus(true)
+        }
+        // Android coordinates are device pixels; CEF wants view (DIP) coordinates
+        val density = CompatResources.DENSITY
+        val isPointerAction = masked == CompatMotionEvent.ACTION_POINTER_DOWN || masked == CompatMotionEvent.ACTION_POINTER_UP
+        for (i in 0 until event.pointerCount) {
+            // For POINTER_DOWN/UP only the pointer at actionIndex changes state
+            val eventType = if (isPointerAction && i != event.actionIndex) CefTouchEvent.EventType.MOVED else type
+            val tool =
+                when (event.getToolType(i)) {
+                    CompatMotionEvent.TOOL_TYPE_MOUSE -> CefTouchEvent.PointerType.MOUSE
+                    CompatMotionEvent.TOOL_TYPE_STYLUS -> CefTouchEvent.PointerType.PEN
+                    CompatMotionEvent.TOOL_TYPE_ERASER -> CefTouchEvent.PointerType.ERASER
+                    else -> CefTouchEvent.PointerType.TOUCH
+                }
+            b.sendTouchEvent(
+                CefTouchEvent(
+                    event.getPointerId(i),
+                    event.getX(i) / density,
+                    event.getY(i) / density,
+                    event.getTouchMajor(i) / 2 / density,
+                    event.getTouchMinor(i) / 2 / density,
+                    event.getOrientation(i),
+                    event.getPressure(i),
+                    eventType,
+                    0,
+                    tool,
+                ),
+            )
+        }
+        Log.v(TAG, "Dispatched touch $event")
+        return true
     }
 
     override fun clearView(): Unit = throw RuntimeException("Stub!")

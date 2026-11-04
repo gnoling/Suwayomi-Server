@@ -1068,6 +1068,14 @@ public class WebView extends AbsoluteLayout
         return mProvider.getViewDelegate().onTouchEvent(event);
     }
 
+    /**
+     * Extensions' android.view.MotionEvent references are rewritten to the compat class
+     * (see BytecodeEditor), so their dispatchTouchEvent calls resolve to this overload.
+     */
+    public boolean dispatchTouchEvent(xyz.nulldev.androidcompat.replace.android.view.MotionEvent event) {
+        return mProvider.dispatchTouchEvent(event);
+    }
+
     @Override
     public boolean onGenericMotionEvent(MotionEvent event) {
         return mProvider.getViewDelegate().onGenericMotionEvent(event);
