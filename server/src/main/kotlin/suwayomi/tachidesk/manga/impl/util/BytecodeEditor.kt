@@ -124,6 +124,15 @@ object BytecodeEditor {
             "android/view/MotionEvent",
             "android/view/MotionEvent\$PointerCoords",
             "android/view/MotionEvent\$PointerProperties",
+            // Virtual display + Presentation, used by extensions to host an "on screen" WebView
+            "android/app/Presentation",
+            "android/hardware/display/DisplayManager",
+            "android/hardware/display/VirtualDisplay",
+            "android/media/Image",
+            "android/media/ImageReader",
+            "android/media/ImageReader\$OnImageAvailableListener",
+            "android/view/Display",
+            "android/view/Surface",
         )
 
     private val remapper = SimpleRemapper(classesToReplace.associateWith { "$REPLACEMENT_PATH/$it" })
