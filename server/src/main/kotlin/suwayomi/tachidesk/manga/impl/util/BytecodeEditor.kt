@@ -133,6 +133,8 @@ object BytecodeEditor {
             "android/media/ImageReader\$OnImageAvailableListener",
             "android/view/Display",
             "android/view/Surface",
+            "android/os/HandlerThread",
+            "android/os/LocaleList",
         )
 
     private val remapper = SimpleRemapper(classesToReplace.associateWith { "$REPLACEMENT_PATH/$it" })
