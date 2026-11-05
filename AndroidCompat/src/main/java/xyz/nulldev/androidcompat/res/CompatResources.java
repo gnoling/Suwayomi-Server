@@ -20,13 +20,19 @@ import java.lang.reflect.Field;
  * running one.
  */
 public final class CompatResources extends Resources {
-    /** Size of the offscreen viewport WebViews render into, in pixels. */
-    public static final int WIDTH_PIXELS = 1280;
-    public static final int HEIGHT_PIXELS = 2856;
+    /*
+     * A typical phone (1080x2400 @ 420dpi). Extensions' page scripts are written for phone-sized
+     * viewports, e.g. Comix only recognizes its reader once the page scrolls, which a single-page
+     * chapter never does in a huge desktop-sized viewport.
+     */
+    public static final int WIDTH_PIXELS = 1080;
+    public static final int HEIGHT_PIXELS = 2400;
+    public static final float DENSITY = 2.625f;
+    public static final int DENSITY_DPI = 420;
 
-    /** 1 CSS px == 1 device px, so coordinates from page JS can be used as-is. */
-    public static final float DENSITY = 1f;
-    public static final int DENSITY_DPI = 160;
+    /** Size of the offscreen viewport WebViews render into, in CSS pixels (DIP): 411x914. */
+    public static final int VIEW_WIDTH = Math.round(WIDTH_PIXELS / DENSITY);
+    public static final int VIEW_HEIGHT = Math.round(HEIGHT_PIXELS / DENSITY);
 
     private static final DisplayMetrics METRICS;
     public static final CompatResources INSTANCE;

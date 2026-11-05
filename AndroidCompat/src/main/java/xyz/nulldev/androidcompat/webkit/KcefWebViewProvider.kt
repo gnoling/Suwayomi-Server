@@ -562,7 +562,7 @@ class KcefWebViewProvider(
 
     private class RenderHandler : CefRenderHandlerAdapter() {
         override fun getViewRect(browser: CefBrowser): Rectangle =
-            Rectangle(0, 0, CompatResources.WIDTH_PIXELS, CompatResources.HEIGHT_PIXELS)
+            Rectangle(0, 0, CompatResources.VIEW_WIDTH, CompatResources.VIEW_HEIGHT)
 
         override fun onPaint(
             browser: CefBrowser,
