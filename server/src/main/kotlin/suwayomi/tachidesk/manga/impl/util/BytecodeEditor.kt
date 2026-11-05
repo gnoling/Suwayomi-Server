@@ -57,8 +57,12 @@ object BytecodeEditor {
             .use { files ->
                 files
                     .asSequence()
-                    .filter { it.fileName.toString().substringAfterLast('.').uppercase() in signatureFileExtensions }
-                    .toList()
+                    .filter {
+                        it.fileName
+                            .toString()
+                            .substringAfterLast('.')
+                            .uppercase() in signatureFileExtensions
+                    }.toList()
             }.forEach(Files::delete)
     }
 
