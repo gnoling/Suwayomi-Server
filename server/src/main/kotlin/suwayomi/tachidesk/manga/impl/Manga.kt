@@ -49,6 +49,7 @@ import suwayomi.tachidesk.manga.impl.util.source.GetSource.getSourceOrNull
 import suwayomi.tachidesk.manga.impl.util.source.GetSource.getSourceOrStub
 import suwayomi.tachidesk.manga.impl.util.source.StubSource
 import suwayomi.tachidesk.manga.impl.util.storage.ImageResponse.clearCachedImage
+import suwayomi.tachidesk.manga.impl.util.storage.ImageResponse.findFileNameStartingWith
 import suwayomi.tachidesk.manga.impl.util.storage.ImageResponse.getImageResponse
 import suwayomi.tachidesk.manga.impl.util.storage.ImageUtil
 import suwayomi.tachidesk.manga.impl.util.updateMangaDownloadDir
@@ -487,7 +488,22 @@ object Manga {
         }
     }
 
+    /**
+     * A cover the user placed in [ApplicationDirs.customThumbnailsRoot]. Source thumbnails are
+     * often tiny; refreshing the manga's metadata never touches this file.
+     */
+    private fun getCustomThumbnail(mangaId: Int): Pair<InputStream, String>? {
+        val imageFile =
+            findFileNameStartingWith(applicationDirs.customThumbnailsRoot, mangaId.toString())
+                ?.let { File(it) }
+                ?: return null
+        val contentType = ImageUtil.findImageType { imageFile.inputStream() }?.mime ?: "image/jpeg"
+        return imageFile.inputStream() to contentType
+    }
+
     suspend fun getMangaThumbnail(mangaId: Int): Pair<InputStream, String> {
+        getCustomThumbnail(mangaId)?.let { return it }
+
         val mangaInLibrary =
             transaction {
                 MangaUserTable
