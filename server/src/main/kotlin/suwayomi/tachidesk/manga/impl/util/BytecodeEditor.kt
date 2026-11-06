@@ -9,12 +9,9 @@ package suwayomi.tachidesk.manga.impl.util
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.objectweb.asm.ClassReader
-import org.objectweb.asm.ClassVisitor
 import org.objectweb.asm.ClassWriter
-import org.objectweb.asm.FieldVisitor
-import org.objectweb.asm.Handle
-import org.objectweb.asm.MethodVisitor
-import org.objectweb.asm.Opcodes
+import org.objectweb.asm.commons.ClassRemapper
+import org.objectweb.asm.commons.SimpleRemapper
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
@@ -30,16 +27,52 @@ object BytecodeEditor {
      * @param jarFile The JarFile to replace class references in
      */
     fun fixAndroidClasses(jarFile: Path) {
-        FileSystems.newFileSystem(jarFile, null as ClassLoader?)?.use {
-            Files
-                .walk(it.getPath("/"))
-                .asSequence()
-                .filterNotNull()
-                .filterNot(Files::isDirectory)
-                .mapNotNull(::getClassBytes)
-                .map(::transform)
-                .forEach(::write)
+        FileSystems.newFileSystem(jarFile, null as ClassLoader?)?.use { fs ->
+            val changed =
+                Files.walk(fs.getPath("/")).use { paths ->
+                    paths
+                        .asSequence()
+                        .filterNotNull()
+                        .filterNot(Files::isDirectory)
+                        .mapNotNull(::getClassBytes)
+                        .filter { referencesReplacedClass(it.second) }
+                        .map(::transform)
+                        .onEach(::write)
+                        .count()
+                }
+            if (changed > 0) {
+                logger.debug { "Replaced Android class references in $changed classes of $jarFile" }
+                // Extensions distributed as signed jars would otherwise fail the class loader's digest check
+                removeSignature(fs.getPath("/META-INF"))
+            }
         }
+    }
+
+    private val signatureFileExtensions = setOf("SF", "RSA", "DSA", "EC")
+
+    private fun removeSignature(metaInf: Path) {
+        if (!Files.isDirectory(metaInf)) return
+        Files
+            .list(metaInf)
+            .use { files ->
+                files
+                    .asSequence()
+                    .filter {
+                        it.fileName
+                            .toString()
+                            .substringAfterLast('.')
+                            .uppercase() in signatureFileExtensions
+                    }.toList()
+            }.forEach(Files::delete)
+    }
+
+    /**
+     * Cheap pre-check so only classes that need it are rewritten: class names in the
+     * constant pool are stored as (ASCII) UTF-8.
+     */
+    private fun referencesReplacedClass(bytes: ByteArray): Boolean {
+        val text = String(bytes, Charsets.ISO_8859_1)
+        return classesToReplace.any { text.contains(it) }
     }
 
     /**
@@ -86,181 +119,46 @@ object BytecodeEditor {
     private const val REPLACEMENT_PATH = "xyz/nulldev/androidcompat/replace"
 
     /**
-     * List of classes that will be replaced
+     * List of classes that will be replaced. Nested classes must be listed explicitly.
      */
     private val classesToReplace =
         listOf(
             "java/text/SimpleDateFormat",
+            // android.jar's MotionEvent is a stub; used by extensions that synthesize touches
+            "android/view/MotionEvent",
+            "android/view/MotionEvent\$PointerCoords",
+            "android/view/MotionEvent\$PointerProperties",
+            // Virtual display + Presentation, used by extensions to host an "on screen" WebView
+            "android/app/Presentation",
+            "android/hardware/display/DisplayManager",
+            "android/hardware/display/VirtualDisplay",
+            "android/media/Image",
+            "android/media/ImageReader",
+            "android/media/ImageReader\$OnImageAvailableListener",
+            "android/view/Display",
+            "android/view/Surface",
+            "android/os/HandlerThread",
+            "android/os/LocaleList",
         )
 
-    /**
-     * Replace direct references to the class, used on places
-     * that don't have any other text then the class
-     *
-     * @return [String] of class or null if [String] was null
-     */
-    private fun String?.replaceDirectly() =
-        when (this) {
-            null -> null
-            in classesToReplace -> "$REPLACEMENT_PATH/$this"
-            else -> this
-        }
-
-    /**
-     * Replace references to the class, used in places that have
-     * other text around the class references
-     *
-     * @return [String] with class references replaced, or null if [String] was null
-     */
-    private fun String?.replaceIndirectly(): String? {
-        if (this == null) return null
-        var classReference: String = this
-        classesToReplace.forEach {
-            classReference = classReference.replace(it, "$REPLACEMENT_PATH/$it")
-        }
-        return classReference
-    }
+    private val remapper = SimpleRemapper(classesToReplace.associateWith { "$REPLACEMENT_PATH/$it" })
 
     /**
      * Replace all references to certain classes inside the class file
-     * with ones that behave more like Androids
+     * with ones that behave more like Androids.
+     *
+     * [ClassRemapper] rewrites every place a class can be referenced (descriptors, signatures,
+     * owners of method and field instructions, type instructions, stack map frames,
+     * invokedynamic arguments, ...), so the rewritten class stays verifiable.
      *
      * @param pair Class bytecode to load into ASM for ease of modification
      *
      * @return [ByteArray] with modified bytecode
      */
     private fun transform(pair: Pair<Path, ByteArray>): Pair<Path, ByteArray> {
-        // Read the class and prepare to modify it
         val cr = ClassReader(pair.second)
-        val cw = ClassWriter(cr, 0)
-        // Modify the class
-        cr.accept(
-            object : ClassVisitor(Opcodes.ASM5, cw) {
-                // Modify field descriptor, for example
-                // class MangaYes {
-                //     val format = SimpleDateFormat("YYYY-MM-dd")
-                // }
-                override fun visitField(
-                    access: Int,
-                    name: String?,
-                    desc: String?,
-                    signature: String?,
-                    cst: Any?,
-                ): FieldVisitor? {
-                    logger.trace { "CLass Field" to "${desc.replaceIndirectly()}: ${cst?.let { it::class.java.simpleName }}: $cst" }
-                    return super.visitField(access, name, desc.replaceIndirectly(), signature, cst)
-                }
-
-                override fun visit(
-                    version: Int,
-                    access: Int,
-                    name: String?,
-                    signature: String?,
-                    superName: String?,
-                    interfaces: Array<out String>?,
-                ) {
-                    logger.trace { "Visiting $name: $signature: $superName" }
-                    super.visit(version, access, name, signature, superName, interfaces)
-                }
-
-                // Modify method bytecode, for example
-                // class MangaYes {
-                //     fun fetchChapterList() {
-                //         SimpleDateFormat("YYYY-MM-dd")
-                //     }
-                // }
-                override fun visitMethod(
-                    access: Int,
-                    name: String,
-                    desc: String,
-                    signature: String?,
-                    exceptions: Array<String?>?,
-                ): MethodVisitor {
-                    logger.trace { "Processing method $name: ${desc.replaceIndirectly()}: $signature" }
-                    val mv: MethodVisitor? =
-                        super.visitMethod(
-                            access,
-                            name,
-                            desc.replaceIndirectly(),
-                            signature,
-                            exceptions,
-                        )
-                    return object : MethodVisitor(Opcodes.ASM5, mv) {
-                        override fun visitLdcInsn(cst: Any?) {
-                            logger.trace { "Ldc" to "${cst?.let { "${it::class.java.simpleName}: $it" }}" }
-                            super.visitLdcInsn(cst)
-                        }
-
-                        // Replace method type, for example
-                        // val format = DateFormat()
-                        // fun fetchChapterList() {
-                        //     if (format is SimpleDateFormat)
-                        // }
-                        override fun visitTypeInsn(
-                            opcode: Int,
-                            type: String?,
-                        ) {
-                            logger.trace {
-                                "Type" to "$opcode: ${type.replaceDirectly()}"
-                            }
-                            super.visitTypeInsn(
-                                opcode,
-                                type.replaceDirectly(),
-                            )
-                        }
-
-                        // Replace method field, for example
-                        // fun fetchChapterList() {
-                        //     val format = SimpleDateFormat("YYYY-MM-dd")
-                        // }
-                        override fun visitMethodInsn(
-                            opcode: Int,
-                            owner: String?,
-                            name: String?,
-                            desc: String?,
-                            itf: Boolean,
-                        ) {
-                            logger.trace {
-                                "Method" to "$opcode: ${owner.replaceDirectly()}: $name: ${desc.replaceIndirectly()}"
-                            }
-                            super.visitMethodInsn(
-                                opcode,
-                                owner.replaceDirectly(),
-                                name,
-                                desc.replaceIndirectly(),
-                                itf,
-                            )
-                        }
-
-                        // Replace class field call from method, for example
-                        // val format = SimpleDateFormat("YYYY-MM-dd")
-                        // fun fetchChapterList() {
-                        //     format.format(Date())
-                        // }
-                        override fun visitFieldInsn(
-                            opcode: Int,
-                            owner: String?,
-                            name: String?,
-                            desc: String?,
-                        ) {
-                            logger.trace { "Field" to "$opcode: $owner: $name: ${desc.replaceIndirectly()}" }
-                            super.visitFieldInsn(opcode, owner, name, desc.replaceIndirectly())
-                        }
-
-                        override fun visitInvokeDynamicInsn(
-                            name: String?,
-                            desc: String?,
-                            bsm: Handle?,
-                            vararg bsmArgs: Any?,
-                        ) {
-                            logger.trace { "InvokeDynamic" to "$name: $desc" }
-                            super.visitInvokeDynamicInsn(name, desc, bsm, *bsmArgs)
-                        }
-                    }
-                }
-            },
-            0,
-        )
+        val cw = ClassWriter(0)
+        cr.accept(ClassRemapper(cw, remapper), 0)
         return pair.first to cw.toByteArray()
     }
 

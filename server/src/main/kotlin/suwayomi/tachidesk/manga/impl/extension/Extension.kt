@@ -35,6 +35,7 @@ import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.jetbrains.exposed.v1.jdbc.update
 import org.jetbrains.exposed.v1.jdbc.upsert
 import suwayomi.tachidesk.manga.impl.util.AndroidManifestParser
+import suwayomi.tachidesk.manga.impl.util.BytecodeEditor
 import suwayomi.tachidesk.manga.impl.util.PackageTools
 import suwayomi.tachidesk.manga.impl.util.PackageTools.EXTENSION_FEATURE
 import suwayomi.tachidesk.manga.impl.util.PackageTools.LIB_VERSION_MAX
@@ -264,6 +265,7 @@ object Extension {
 
                 file.copyTo(jarFile)
                 file.deleteExisting()
+                BytecodeEditor.fixAndroidClasses(jarFile)
                 return jarFile
             }
         }
