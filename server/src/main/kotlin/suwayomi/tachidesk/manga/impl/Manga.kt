@@ -49,7 +49,6 @@ import suwayomi.tachidesk.manga.impl.util.source.GetSource.getSourceOrNull
 import suwayomi.tachidesk.manga.impl.util.source.GetSource.getSourceOrStub
 import suwayomi.tachidesk.manga.impl.util.source.StubSource
 import suwayomi.tachidesk.manga.impl.util.storage.ImageResponse.clearCachedImage
-import suwayomi.tachidesk.manga.impl.util.storage.ImageResponse.findFileNameStartingWith
 import suwayomi.tachidesk.manga.impl.util.storage.ImageResponse.getImageResponse
 import suwayomi.tachidesk.manga.impl.util.storage.ImageUtil
 import suwayomi.tachidesk.manga.impl.util.updateMangaDownloadDir
@@ -488,15 +487,31 @@ object Manga {
         }
     }
 
+    private val customThumbnailExtensions = listOf("jpg", "jpeg", "png", "webp", "gif", "avif")
+
     /**
-     * A cover the user placed in [ApplicationDirs.customThumbnailsRoot]. Source thumbnails are
-     * often tiny; refreshing the manga's metadata never touches this file.
+     * A cover the user placed in [ApplicationDirs.customThumbnailsRoot] as `<mangaId>.<ext>`. Source
+     * thumbnails are often tiny; refreshing the manga's metadata never touches this file.
      */
+    private fun getCustomThumbnailFile(mangaId: Int): File? =
+        customThumbnailExtensions
+            .map { File(applicationDirs.customThumbnailsRoot, "$mangaId.$it") }
+            .firstOrNull { it.isFile }
+
+    /**
+     * When the manga's thumbnail last changed, in epoch seconds. Clients put this in the thumbnail
+     * url to bust their caches, so a newer custom cover has to count as a change.
+     */
+    fun getThumbnailLastFetched(
+        mangaId: Int,
+        thumbnailUrlLastFetched: Long,
+    ): Long {
+        val customCoverModified = getCustomThumbnailFile(mangaId)?.lastModified()?.div(1000) ?: return thumbnailUrlLastFetched
+        return maxOf(thumbnailUrlLastFetched, customCoverModified)
+    }
+
     private fun getCustomThumbnail(mangaId: Int): Pair<InputStream, String>? {
-        val imageFile =
-            findFileNameStartingWith(applicationDirs.customThumbnailsRoot, mangaId.toString())
-                ?.let { File(it) }
-                ?: return null
+        val imageFile = getCustomThumbnailFile(mangaId) ?: return null
         val contentType = ImageUtil.findImageType { imageFile.inputStream() }?.mime ?: "image/jpeg"
         return imageFile.inputStream() to contentType
     }
