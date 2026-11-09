@@ -82,6 +82,8 @@ public class CustomContext extends Context {
     {
         serviceMap.put(Context.CONNECTIVITY_SERVICE, ConnectivityManager.INSTANCE);
         serviceMap.put(Context.POWER_SERVICE, PowerManager.INSTANCE);
+        // Replaces android.hardware.display.DisplayManager in extensions, see BytecodeEditor
+        serviceMap.put(Context.DISPLAY_SERVICE, xyz.nulldev.androidcompat.replace.android.hardware.display.DisplayManager.INSTANCE);
     }
 
     @Override

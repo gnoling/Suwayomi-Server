@@ -7,6 +7,7 @@ package suwayomi.tachidesk.manga.impl.download
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.local.LocalSource
 import io.github.oshai.kotlinlogging.KLogger
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -15,6 +16,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -41,6 +43,8 @@ import suwayomi.tachidesk.manga.impl.download.model.DownloadUpdateType.STOPPED
 import suwayomi.tachidesk.manga.model.table.ChapterTable
 import suwayomi.tachidesk.manga.model.table.ChapterUserTable
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 class Downloader(
     private val scope: CoroutineScope,
@@ -52,6 +56,14 @@ class Downloader(
 ) {
     companion object {
         private const val MAX_RETRIES = 3
+        private val RATE_LIMIT_BACKOFF = 30.seconds
+        private val MAX_RATE_LIMIT_BACKOFF = 2.minutes
+
+        private fun Throwable.isRateLimited(): Boolean =
+            generateSequence(this) { it.cause }.any {
+                (it is HttpException && it.code == 429) ||
+                    it.message?.contains("HTTP error 429") == true
+            }
     }
 
     private val logger = KotlinLogging.logger("${Downloader::class.java.name} source($sourceId)")
@@ -232,6 +244,13 @@ class Downloader(
                 if (download.tries >= MAX_RETRIES) {
                     download.state = Error
                     notify(false, ERROR, download)
+                }
+                // A rate-limited source (e.g. MangaDex answering 429) rejects every request until the limit resets.
+                // Retrying straight away burns this chapter's tries and then every following chapter's, so wait first.
+                if (e.isRateLimited()) {
+                    val backoff = (RATE_LIMIT_BACKOFF * download.tries).coerceAtMost(MAX_RATE_LIMIT_BACKOFF)
+                    downloadLogger.info { "rate limited, waiting $backoff" }
+                    delay(backoff)
                 }
             }
         }
