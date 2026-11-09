@@ -110,6 +110,10 @@ class ApplicationDirs(
     val customThumbnailsRoot
         get() = "$downloadsRoot/custom_covers"
 
+    /** JSON object of manga id -> title clients see instead of the source's title, see [suwayomi.tachidesk.manga.impl.CustomTitles]. */
+    val customTitlesFile
+        get() = "$downloadsRoot/custom_titles.json"
+
     val cacheDir = "$dataRoot/cache"
 }
 

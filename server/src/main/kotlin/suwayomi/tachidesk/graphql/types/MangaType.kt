@@ -22,6 +22,7 @@ import suwayomi.tachidesk.graphql.server.primitives.getNodeListFromDataLoaders
 import suwayomi.tachidesk.graphql.types.CategoryNodeList.Companion.toNodeList
 import suwayomi.tachidesk.graphql.types.ChapterNodeList.Companion.toNodeList
 import suwayomi.tachidesk.graphql.types.TrackRecordNodeList.Companion.toNodeList
+import suwayomi.tachidesk.manga.impl.CustomTitles
 import suwayomi.tachidesk.manga.impl.Manga
 import suwayomi.tachidesk.manga.impl.MangaList
 import suwayomi.tachidesk.manga.model.dataclass.toGenreList
@@ -87,7 +88,7 @@ class MangaType(
         row[MangaTable.id].value,
         row[MangaTable.sourceReference],
         row[MangaTable.url],
-        row[MangaTable.title],
+        CustomTitles.displayTitle(row[MangaTable.id].value, row[MangaTable.title]),
         row[MangaTable.thumbnail_url]?.let { MangaList.proxyThumbnailUrl(row[MangaTable.id].value) },
         Manga.getThumbnailLastFetched(row[MangaTable.id].value, row[MangaTable.thumbnailUrlLastFetched]),
         row[MangaTable.initialized],

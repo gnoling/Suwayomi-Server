@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.dao.id.IntIdTable
+import suwayomi.tachidesk.manga.impl.CustomTitles
 import suwayomi.tachidesk.manga.impl.Manga
 import suwayomi.tachidesk.manga.impl.MangaList.proxyThumbnailUrl
 import suwayomi.tachidesk.manga.model.dataclass.MangaDataClass
@@ -52,7 +53,7 @@ fun MangaTable.toDataClass(mangaEntry: ResultRow) =
         id = mangaEntry[this.id].value,
         sourceId = mangaEntry[sourceReference].toString(),
         url = mangaEntry[url],
-        title = mangaEntry[title],
+        title = CustomTitles.displayTitle(mangaEntry[this.id].value, mangaEntry[title]),
         thumbnailUrl = proxyThumbnailUrl(mangaEntry[this.id].value),
         thumbnailUrlLastFetched = Manga.getThumbnailLastFetched(mangaEntry[this.id].value, mangaEntry[thumbnailUrlLastFetched]),
         initialized = mangaEntry[initialized],
