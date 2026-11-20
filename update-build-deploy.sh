@@ -7,7 +7,7 @@
 #   update-build-deploy.sh --deploy-jar FILE    only deploy FILE to gum
 #
 # Options: --upstream REF   upstream ref or commit to merge (default: master)
-#          --no-push        don't push the merged branch to the fork
+#          --no-push        don't push the merged branch to the fork or to Forgejo
 #
 # Works in any checkout of the repo (this working copy, or updateapps' clone in
 # ~/build/updateapps-tmp/suwayomi), using explicit URLs rather than remote names. Pushing goes over
@@ -17,6 +17,8 @@ set -euo pipefail
 UPSTREAM_URL=https://github.com/Suwayomi/Suwayomi-Server.git
 FORK_REPO=gnoling/Suwayomi-Server
 FORK_URL=https://github.com/$FORK_REPO.git
+# Forgejo on gum (LAN only) is the main home since 2026-11-20; GitHub stays the shared copy. Push to both.
+FORGEJO_URL=ssh://git@git.gum.0s.rip:2222/Garret/Suwayomi-Server.git
 BRANCH=local-regex
 JDK=/usr/lib/jvm/java-25-openjdk-amd64
 GUM=gum
@@ -104,6 +106,14 @@ fi
 if [ "$push" = 1 ] && [ "$(git rev-parse HEAD)" != "$fork" ]; then
     step "Pushing $BRANCH to $FORK_REPO"
     gitc push --quiet "$FORK_URL" "HEAD:refs/heads/$BRANCH"
+fi
+if [ "$push" = 1 ]; then
+    step "Pushing $BRANCH to Forgejo"
+    # Not fatal: Forgejo is only reachable on the LAN
+    git push --quiet "$FORGEJO_URL" "HEAD:refs/heads/$BRANCH" || echo "   (Forgejo push failed; continuing)"
+    if [ "$upstream_ref" = master ]; then
+        git push --quiet "$FORGEJO_URL" "$upstream:refs/heads/master" || echo "   (Forgejo master push failed; continuing)"
+    fi
 fi
 
 step "Building $(git log -1 --format='%h %s')"
