@@ -119,7 +119,9 @@ fi
 step "Building $(git log -1 --format='%h %s')"
 [ -x "$JDK/bin/java" ] || die "JDK 25 not found at $JDK"
 rm -f server/build/Suwayomi-Server-v*.jar
-JAVA_HOME=$JDK ./gradlew :server:shadowJar --console=plain -q
+# --refresh-dependencies: upstream re-publishes artifacts under an unchanged version (android-jar 1.0.0 lost
+# the Resources/DisplayMetrics stubs once AndroidCompat implemented them), which a stale cache never notices.
+JAVA_HOME=$JDK ./gradlew :server:shadowJar --console=plain -q --refresh-dependencies
 jars=(server/build/Suwayomi-Server-v*.jar)
 [ ${#jars[@]} -eq 1 ] && [ -s "${jars[0]}" ] || die "build produced no jar"
 jar=$(realpath "${jars[0]}")
