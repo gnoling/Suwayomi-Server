@@ -177,7 +177,7 @@ class KcefWebView {
                     ConsoleEvent(level.ordinal, message, source, line),
                 ),
             )
-            logger.trace { "$source:$line: $message" }
+            logger.debug { "Console $source:$line[$level]: ${message.take(500)}" }
             return true
         }
 
@@ -677,84 +677,113 @@ class KcefWebView {
             browser.sendKeyEvent(keyEvent(msg, component, KeyEvent.KEY_RELEASED, modifier)!!)
             return
         }
-        if (type == "mousedown" || type == "mouseup" || type == "click") {
-            val id =
-                when (type) {
-                    "mousedown" -> MouseEvent.MOUSE_PRESSED
-                    "mouseup" -> MouseEvent.MOUSE_PRESSED
-                    "click" -> MouseEvent.MOUSE_CLICKED
-                    else -> 0
-                }
-            val mouseModifier =
-                when (msg.button ?: 0) {
-                    0 -> MouseEvent.BUTTON1_DOWN_MASK
-                    1 -> MouseEvent.BUTTON2_DOWN_MASK
-                    2 -> MouseEvent.BUTTON3_DOWN_MASK
-                    else -> 0
-                }
-            val button =
-                when (msg.button ?: 0) {
-                    0 -> MouseEvent.BUTTON1
-                    1 -> MouseEvent.BUTTON2
-                    2 -> MouseEvent.BUTTON3
-                    else -> 0
-                }
-            val ev =
-                MouseEvent(
-                    component,
-                    id,
-                    0L,
-                    modifier or mouseModifier,
-                    clickX.toInt(),
-                    clickY.toInt(),
-                    msg.clientX?.toInt() ?: 0,
-                    msg.clientY?.toInt() ?: 0,
-                    1,
-                    true,
-                    button,
-                )
-            browser.sendMouseEvent(ev)
-            val evType =
-                when (type) {
-                    "mousedown" -> CefTouchEvent.EventType.PRESSED
-                    "mouseup" -> CefTouchEvent.EventType.RELEASED
-                    else -> CefTouchEvent.EventType.MOVED
-                }
-            val ev2 =
-                CefTouchEvent(
-                    0,
-                    clickX,
-                    clickY,
-                    10.0f,
-                    10.0f,
-                    0.0f,
-                    1.0f,
-                    evType,
-                    modifier,
-                    CefTouchEvent.PointerType.MOUSE,
-                )
-            browser.sendTouchEvent(ev2)
+        if (type == "mousedown" || type == "mouseup") {
+            if (type == "mousedown") pressSeen = true
+            pointer(component, msg, modifier, down = type == "mousedown")
+            return
+        }
+        if (type == "click") {
+            // The press and release already made the click; only a client that sends nothing else needs one made
+            if (!pressSeen) {
+                pointer(component, msg, modifier, down = true)
+                pointer(component, msg, modifier, down = false)
+            }
+            pressSeen = false
             return
         }
         if (type == "mousemove") {
+            if (touchInput) {
+                // A finger doesn't hover
+                if (pointerDown) browser.sendTouchEvent(touchEvent(msg, CefTouchEvent.EventType.MOVED, modifier))
+                return
+            }
             val ev =
                 MouseEvent(
                     component,
-                    MouseEvent.MOUSE_MOVED,
+                    if (pointerDown) MouseEvent.MOUSE_DRAGGED else MouseEvent.MOUSE_MOVED,
                     0L,
-                    modifier,
+                    modifier or pointerDownMask,
                     clickX.toInt(),
                     clickY.toInt(),
                     msg.clientX?.toInt() ?: 0,
                     msg.clientY?.toInt() ?: 0,
                     0,
-                    true,
+                    false,
                     0,
                 )
             browser.sendMouseEvent(ev)
             return
         }
     }
+
+    // A phone has no mouse: with a mobile User-Agent the viewer's pointer is a finger, otherwise a mouse. One or the
+    // other, never both, and every press gets its release, so the page sees the input a real device would produce.
+    private val touchInput = KcefWebSettings.isMobileUserAgent(System.getProperty("http.agent"))
+    private var pointerDown = false
+    private var pointerDownMask = 0
+    private var pressSeen = false
+
+    private fun pointer(
+        component: Component,
+        msg: WebView.JsEventMessage,
+        modifier: Int,
+        down: Boolean,
+    ) {
+        val button = msg.button ?: 0
+        if (touchInput) {
+            if (button != 0 || down == pointerDown) return
+            pointerDown = down
+            val type = if (down) CefTouchEvent.EventType.PRESSED else CefTouchEvent.EventType.RELEASED
+            browser.sendTouchEvent(touchEvent(msg, type, modifier))
+            return
+        }
+        val mask =
+            when (button) {
+                0 -> MouseEvent.BUTTON1_DOWN_MASK
+                1 -> MouseEvent.BUTTON2_DOWN_MASK
+                2 -> MouseEvent.BUTTON3_DOWN_MASK
+                else -> 0
+            }
+        pointerDown = down
+        pointerDownMask = if (down) mask else 0
+        val ev =
+            MouseEvent(
+                component,
+                if (down) MouseEvent.MOUSE_PRESSED else MouseEvent.MOUSE_RELEASED,
+                0L,
+                modifier or pointerDownMask,
+                msg.clickX.toInt(),
+                msg.clickY.toInt(),
+                msg.clientX?.toInt() ?: 0,
+                msg.clientY?.toInt() ?: 0,
+                1,
+                false,
+                when (button) {
+                    0 -> MouseEvent.BUTTON1
+                    1 -> MouseEvent.BUTTON2
+                    2 -> MouseEvent.BUTTON3
+                    else -> MouseEvent.NOBUTTON
+                },
+            )
+        browser.sendMouseEvent(ev)
+    }
+
+    private fun touchEvent(
+        msg: WebView.JsEventMessage,
+        type: CefTouchEvent.EventType,
+        modifier: Int,
+    ) = CefTouchEvent(
+        0,
+        msg.clickX,
+        msg.clickY,
+        10.0f,
+        10.0f,
+        0.0f,
+        1.0f,
+        type,
+        modifier,
+        CefTouchEvent.PointerType.TOUCH,
+    )
 
     fun paste(msg: String) {
         val component = browser?.uiComponent ?: return
