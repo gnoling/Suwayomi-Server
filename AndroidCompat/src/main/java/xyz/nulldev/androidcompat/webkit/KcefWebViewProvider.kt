@@ -344,7 +344,9 @@ class KcefWebViewProvider(
             source: String,
             line: Int,
         ): Boolean {
-            Log.v(TAG, "$source:$line[$level]: $message")
+            // Debug rather than verbose: a page's own errors (e.g. a captcha widget's error code) are often the only
+            // trace of why an extension's WebView run failed
+            Log.d(TAG, "Console $source:$line[$level]: ${message.take(500)}")
             return true
         }
 
@@ -555,9 +557,10 @@ class KcefWebViewProvider(
             webMessageMappings[Pair(invoke.world, invoke.jsObject)]?.let {
                 handler.post {
                     try {
-                        Log.v(
+                        Log.d(
                             TAG,
-                            "Received request to invoke ${invoke.jsObject} on world ${invoke.world} with ${if (invoke.type == 1) "buffer" else "string"} arg",
+                            "Web message for ${invoke.jsObject} from ${frame.url}: " +
+                                if (invoke.type == 1) "(buffer)" else invoke.data.take(80),
                         )
                         val message =
                             if (invoke.type ==
