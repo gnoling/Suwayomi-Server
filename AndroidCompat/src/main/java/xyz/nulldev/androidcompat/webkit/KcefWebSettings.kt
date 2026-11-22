@@ -2,6 +2,11 @@ package xyz.nulldev.androidcompat.webkit
 
 import android.webkit.WebSettings
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.put
 import kotlin.collections.Map
 
 class KcefWebSettings : WebSettings() {
@@ -567,6 +572,65 @@ class KcefWebSettings : WebSettings() {
 
     companion object {
         fun defaultUserAgent() = System.getProperty("http.agent")
+
+        private val CHROME_VERSION = Regex("""Chrome/(\d+)((?:\.\d+){3})?""")
+
+        /**
+         * Client hints agreeing with [ua]. Without them CEF reports its own engine (desktop Linux Chromium)
+         * next to a User-Agent claiming something else, and bot checks such as Cloudflare Turnstile fail the
+         * contradiction. Null when [ua] isn't a Chromium one.
+         */
+        fun userAgentMetadataFor(ua: String): UserAgentMetadata? {
+            val chrome = CHROME_VERSION.find(ua) ?: return null
+            val major = chrome.groupValues[1]
+            val full = major + chrome.groupValues[2].ifEmpty { ".0.0.0" }
+            val android = "Android" in ua
+            val platform =
+                when {
+                    android -> "Android"
+                    "Windows" in ua -> "Windows"
+                    "Macintosh" in ua -> "macOS"
+                    else -> "Linux"
+                }
+            val brand =
+                when {
+                    "; wv" in ua -> "Android WebView"
+                    "Edg/" in ua -> "Microsoft Edge"
+                    else -> "Google Chrome"
+                }
+            val brands = listOf("Not)A;Brand" to "24", "Chromium" to major, brand to major)
+            return UserAgentMetadata(
+                architecture = if (android) "" else "x86",
+                mobile = "Mobile" in ua,
+                model = "",
+                platform = platform,
+                platformVersion = if (android) "15.0.0" else "",
+                bitness = if (android) "" else "64",
+                brands = brands.map { (b, v) -> UserAgentBrandVersion(b, v) },
+                formFactors = listOf(if ("Mobile" in ua) "Mobile" else "Desktop"),
+                fullVersionList = brands.map { (b, v) -> UserAgentBrandVersion(b, if (v == major) full else "$v.0.0.0") },
+                wow64 = false,
+                fullVersion = full,
+            )
+        }
+
+        /**
+         * Arguments for CDP `Emulation.setUserAgentOverride`: [ua] with client hints and navigator.platform that
+         * agree with it. [metadata] (set explicitly by an extension) wins over hints derived from [ua].
+         */
+        fun userAgentOverrideArgs(
+            ua: String,
+            metadata: UserAgentMetadata? = null,
+        ): JsonObject =
+            buildJsonObject {
+                put("userAgent", ua)
+                val hints = metadata ?: userAgentMetadataFor(ua)
+                if (hints?.platform == "Android") put("platform", "Linux armv81")
+                hints?.let { put("userAgentMetadata", Json.encodeToJsonElement(it)) }
+            }
+
+        /** Whether a page should see touch support, as a phone or tablet User-Agent implies. */
+        fun isMobileUserAgent(ua: String) = "Mobile" in ua || "Android" in ua
 
         // TODO: Should we support basic parsing of UA? Currently if no metadata is provided, metadata and UA will mismatch
         fun defaultUserAgentMetadata() =

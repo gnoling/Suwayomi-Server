@@ -1868,19 +1868,21 @@ class KcefWebViewProvider(
 
     private suspend fun setUserAgent() {
         val ua = settings.userAgentString ?: return
-        val args =
-            buildJsonObject {
-                put("userAgent", ua)
-                settings.getUserAgentMetadata()?.let {
-                    Log.d(TAG, "Using user-agent $ua with metadata $it")
-                    put("userAgentMetadata", Json.encodeToJsonElement(it))
-                }
-            }
+        val args = KcefWebSettings.userAgentOverrideArgs(ua, settings.getUserAgentMetadata())
+        Log.d(TAG, "Using user-agent override $args")
         runCatching {
             val res = browser!!.devToolsClient.executeDevToolsMethod("Emulation.setUserAgentOverride", args.toString()).await()
             Log.v(TAG, "Successfully set user agent: $res")
+            if (KcefWebSettings.isMobileUserAgent(ua)) {
+                // A phone has touch points; a mobile User-Agent without them is another giveaway
+                browser!!
+                    .devToolsClient
+                    .executeDevToolsMethod("Emulation.setTouchEmulationEnabled", """{"enabled":true,"maxTouchPoints":5}""")
+                    .await()
+            }
         }.exceptionOrNull()?.let {
             Log.e(TAG, "Failed to set user agent", it)
         }
     }
+
 }

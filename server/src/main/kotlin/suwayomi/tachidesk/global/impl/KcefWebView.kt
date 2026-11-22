@@ -31,6 +31,7 @@ import org.cef.network.CefCookie
 import org.cef.network.CefCookieManager
 import uy.kohesive.injekt.injectLazy
 import xyz.nulldev.androidcompat.webkit.CefHelper
+import xyz.nulldev.androidcompat.webkit.KcefWebSettings
 import xyz.nulldev.androidcompat.webkit.dispose
 import xyz.nulldev.androidcompat.webkit.evaluateJavaScriptDecoded
 import java.awt.Component
@@ -138,12 +139,15 @@ class KcefWebView {
     private inner class LifeSpanHandler : CefLifeSpanHandlerAdapter() {
         override fun onAfterCreated(browser: CefBrowser) {
             val ua = System.getProperty("http.agent")
-            logger.debug { "Setting user agent $ua" }
-            val args = """
-            {
-                "userAgent": ${Json.encodeToString(ua)}
+            // Client hints and navigator.platform have to agree with the User-Agent, or bot checks fail
+            val args = KcefWebSettings.userAgentOverrideArgs(ua).toString()
+            logger.debug { "Setting user agent override $args" }
+            if (KcefWebSettings.isMobileUserAgent(ua)) {
+                browser.devToolsClient.executeDevToolsMethod(
+                    "Emulation.setTouchEmulationEnabled",
+                    """{"enabled":true,"maxTouchPoints":5}""",
+                )
             }
-            """
             browser.devToolsClient.executeDevToolsMethod("Emulation.setUserAgentOverride", args).whenComplete { res, ex ->
                 if (ex != null) {
                     logger.error(ex) { "Failed to set user agent" }
