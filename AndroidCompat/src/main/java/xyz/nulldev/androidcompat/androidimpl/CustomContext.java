@@ -88,12 +88,12 @@ public class CustomContext extends Context {
 
     @Override
     public AssetManager getAssets() {
-        return null;
+        return Resources.getSystem().getAssets();
     }
 
     @Override
     public Resources getResources() {
-        return null;
+        return Resources.getSystem();
     }
 
     @Override
@@ -108,7 +108,7 @@ public class CustomContext extends Context {
 
     @Override
     public Looper getMainLooper() {
-        return null;
+        return Looper.getMainLooper();
     }
 
     @Override

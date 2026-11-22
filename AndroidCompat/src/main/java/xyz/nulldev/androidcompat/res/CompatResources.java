@@ -10,16 +10,13 @@ package xyz.nulldev.androidcompat.res;
 import android.content.res.Resources;
 import android.util.DisplayMetrics;
 
-import java.lang.reflect.Field;
-
 /**
- * Minimal {@link Resources} describing the headless "screen" WebViews render to.
+ * The headless "screen" WebViews render to, and the {@link Resources} describing it.
  * <p>
- * Only {@link #getDisplayMetrics()} is implemented. Every constructor in the android.jar
- * stubs throws, so both this class and its {@link DisplayMetrics} are allocated without
- * running one.
+ * The offscreen viewport, the metrics extensions read from {@code WebView.getResources()} and
+ * the touch coordinates they send back all have to agree, otherwise taps land in the wrong place.
  */
-public final class CompatResources extends Resources {
+public final class CompatResources {
     /*
      * A typical phone (1080x2400 @ 420dpi). Extensions' page scripts are written for phone-sized
      * viewports, e.g. Comix only recognizes its reader once the page scrolls, which a single-page
@@ -34,11 +31,11 @@ public final class CompatResources extends Resources {
     public static final int VIEW_WIDTH = Math.round(WIDTH_PIXELS / DENSITY);
     public static final int VIEW_HEIGHT = Math.round(HEIGHT_PIXELS / DENSITY);
 
-    private static final DisplayMetrics METRICS;
-    public static final CompatResources INSTANCE;
+    public static final DisplayMetrics METRICS;
+    public static final Resources INSTANCE;
 
     static {
-        METRICS = allocate(DisplayMetrics.class);
+        METRICS = new DisplayMetrics();
         METRICS.widthPixels = WIDTH_PIXELS;
         METRICS.heightPixels = HEIGHT_PIXELS;
         METRICS.density = DENSITY;
@@ -46,29 +43,9 @@ public final class CompatResources extends Resources {
         METRICS.scaledDensity = DENSITY;
         METRICS.xdpi = DENSITY_DPI;
         METRICS.ydpi = DENSITY_DPI;
-        INSTANCE = allocate(CompatResources.class);
+        INSTANCE = new Resources(null, METRICS, Resources.getSystem().getConfiguration());
     }
 
-    @SuppressWarnings("deprecation")
     private CompatResources() {
-        // Never invoked, see allocate()
-        super(null, null, null);
-    }
-
-    @Override
-    public DisplayMetrics getDisplayMetrics() {
-        return METRICS;
-    }
-
-    @SuppressWarnings("removal")
-    private static <T> T allocate(Class<T> clazz) {
-        try {
-            Field f = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
-            f.setAccessible(true);
-            sun.misc.Unsafe unsafe = (sun.misc.Unsafe) f.get(null);
-            return clazz.cast(unsafe.allocateInstance(clazz));
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Unable to allocate " + clazz.getName(), e);
-        }
     }
 }
