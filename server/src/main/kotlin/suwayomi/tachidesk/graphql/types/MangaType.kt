@@ -22,6 +22,8 @@ import suwayomi.tachidesk.graphql.server.primitives.getNodeListFromDataLoaders
 import suwayomi.tachidesk.graphql.types.CategoryNodeList.Companion.toNodeList
 import suwayomi.tachidesk.graphql.types.ChapterNodeList.Companion.toNodeList
 import suwayomi.tachidesk.graphql.types.TrackRecordNodeList.Companion.toNodeList
+import suwayomi.tachidesk.manga.impl.CustomTitles
+import suwayomi.tachidesk.manga.impl.Manga
 import suwayomi.tachidesk.manga.impl.MangaList
 import suwayomi.tachidesk.manga.model.dataclass.toGenreList
 import suwayomi.tachidesk.manga.model.table.MangaStatus
@@ -86,9 +88,11 @@ class MangaType(
         row[MangaTable.id].value,
         row[MangaTable.sourceReference],
         row[MangaTable.url],
-        row[MangaTable.title],
-        row[MangaTable.thumbnail_url]?.let { MangaList.proxyThumbnailUrl(row[MangaTable.id].value) },
-        row[MangaTable.thumbnailUrlLastFetched],
+        CustomTitles.displayTitle(row[MangaTable.id].value, row[MangaTable.title]),
+        // a custom cover stands in when the source gives none
+        (row[MangaTable.thumbnail_url] ?: Manga.getCustomThumbnailFile(row[MangaTable.id].value))
+            ?.let { MangaList.proxyThumbnailUrl(row[MangaTable.id].value) },
+        Manga.getThumbnailLastFetched(row[MangaTable.id].value, row[MangaTable.thumbnailUrlLastFetched]),
         row[MangaTable.initialized],
         row[MangaTable.artist],
         row[MangaTable.author],

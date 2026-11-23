@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - local-regex
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,10 +26,10 @@ jobs:
     needs: check_wrapper
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout master branch
+      - name: Checkout pushed branch
         uses: actions/checkout@v7
         with:
-          ref: master
+          ref: ${{ github.ref }}
           path: master
           fetch-depth: 0
 

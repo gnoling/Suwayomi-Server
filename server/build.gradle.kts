@@ -77,6 +77,7 @@ dependencies {
 
     // asm for ByteCodeEditor(fixing SimpleDateFormat) (must match Dex2Jar version)
     implementation(libs.asm)
+    implementation(libs.asm.commons)
 
     // Disk & File
     implementation(libs.cache4k)

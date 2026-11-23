@@ -316,6 +316,15 @@ public interface WebViewProvider {
     /* package */ ViewDelegate getViewDelegate();
 
     /**
+     * Suwayomi: deliver a synthesized touch event (see BytecodeEditor) to the page.
+     *
+     * @return whether the event was delivered
+     */
+    default boolean dispatchTouchEvent(xyz.nulldev.androidcompat.replace.android.view.MotionEvent event) {
+        return false;
+    }
+
+    /**
      * @return a ScrollDelegate implementation. Normally this would be same object as is
      * returned by getViewDelegate().
      */

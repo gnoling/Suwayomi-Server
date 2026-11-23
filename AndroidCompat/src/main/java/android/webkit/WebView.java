@@ -43,7 +43,6 @@ import android.os.RemoteException;
 import android.os.StrictMode;
 import android.print.PrintDocumentAdapter;
 import android.util.AttributeSet;
-import android.util.DisplayMetrics;
 import android.util.Log;
 import android.util.LongSparseArray;
 import android.util.SparseArray;
@@ -220,12 +219,8 @@ public class WebView extends AbsoluteLayout
 
     @Override
     public Resources getResources() {
-        DisplayMetrics metrics = new DisplayMetrics();
-        metrics.widthPixels = mProvider.getContentWidth();
-        metrics.heightPixels = mProvider.getContentHeight();
-        metrics.density = 0.6f;
-        metrics.densityDpi = 96;
-        return new Resources(null, metrics, Resources.getSystem().getConfiguration());
+        // Must match the viewport KcefWebViewProvider renders and the scale it maps touches with
+        return xyz.nulldev.androidcompat.res.CompatResources.INSTANCE;
     }
 
     @Deprecated
@@ -1086,6 +1081,14 @@ public class WebView extends AbsoluteLayout
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         return mProvider.getViewDelegate().onTouchEvent(event);
+    }
+
+    /**
+     * Extensions' android.view.MotionEvent references are rewritten to the compat class
+     * (see BytecodeEditor), so their dispatchTouchEvent calls resolve to this overload.
+     */
+    public boolean dispatchTouchEvent(xyz.nulldev.androidcompat.replace.android.view.MotionEvent event) {
+        return mProvider.dispatchTouchEvent(event);
     }
 
     @Override

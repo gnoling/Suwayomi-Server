@@ -3240,7 +3240,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     }
 
     public final ViewParent getParent() {
-        throw new RuntimeException("Stub!");
+        return mParent;
     }
 
     public void setScrollX(int value) {
@@ -3642,11 +3642,11 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
 
     @ViewDebug.ExportedProperty(deepExport = true, prefix = "layout_")
     public ViewGroup.LayoutParams getLayoutParams() {
-        throw new RuntimeException("Stub!");
+        return mLayoutParams;
     }
 
     public void setLayoutParams(ViewGroup.LayoutParams params) {
-        throw new RuntimeException("Stub!");
+        mLayoutParams = params;
     }
 
     public void resolveLayoutParams() {
@@ -4350,7 +4350,8 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     }
 
     public Resources getResources() {
-        throw new RuntimeException("Stub!");
+        Resources resources = mContext != null ? mContext.getResources() : null;
+        return resources != null ? resources : xyz.nulldev.androidcompat.res.CompatResources.INSTANCE;
     }
 
     @Override

@@ -92,6 +92,7 @@ import org.cef.handler.CefResourceHandler
 import org.cef.handler.CefResourceHandlerAdapter
 import org.cef.handler.CefResourceRequestHandler
 import org.cef.handler.CefResourceRequestHandlerAdapter
+import org.cef.input.CefTouchEvent
 import org.cef.misc.BoolRef
 import org.cef.misc.IntRef
 import org.cef.misc.StringRef
@@ -106,6 +107,7 @@ import org.chromium.android_webview.WebMessageListener
 import org.chromium.content_public.browser.MessagePayload
 import org.chromium.content_public.browser.MessagePayloadType
 import org.koin.mp.KoinPlatformTools
+import xyz.nulldev.androidcompat.res.CompatResources
 import java.awt.Rectangle
 import java.io.BufferedWriter
 import java.io.File
@@ -121,6 +123,7 @@ import kotlin.math.min
 import kotlin.reflect.KFunction
 import kotlin.reflect.full.declaredMemberFunctions
 import kotlin.reflect.jvm.javaMethod
+import xyz.nulldev.androidcompat.replace.android.view.MotionEvent as CompatMotionEvent
 import kotlin.runCatching
 
 class KcefWebViewProvider(
@@ -152,8 +155,8 @@ class KcefWebViewProvider(
         const val QUERY_FN = "__\$_suwayomiQuery"
         const val QUERY_CANCEL_FN = "__\$_suwayomiQueryCancel"
 
-        private val WIDTH = 1280
-        private val HEIGHT = 2856
+        private val WIDTH = CompatResources.VIEW_WIDTH
+        private val HEIGHT = CompatResources.VIEW_HEIGHT
 
         const val WEBMESSAGE_FN = "__\$_suwayomiWebmessage"
         const val WEBMESSAGE_CANCEL_FN = "__\$_suwayomiWebmessageCancel"
@@ -341,7 +344,9 @@ class KcefWebViewProvider(
             source: String,
             line: Int,
         ): Boolean {
-            Log.v(TAG, "$source:$line[$level]: $message")
+            // Debug rather than verbose: a page's own errors (e.g. a captcha widget's error code) are often the only
+            // trace of why an extension's WebView run failed
+            Log.d(TAG, "Console $source:$line[$level]: ${message.take(500)}")
             return true
         }
 
@@ -552,9 +557,10 @@ class KcefWebViewProvider(
             webMessageMappings[Pair(invoke.world, invoke.jsObject)]?.let {
                 handler.post {
                     try {
-                        Log.v(
+                        Log.d(
                             TAG,
-                            "Received request to invoke ${invoke.jsObject} on world ${invoke.world} with ${if (invoke.type == 1) "buffer" else "string"} arg",
+                            "Web message for ${invoke.jsObject} from ${frame.url}: " +
+                                if (invoke.type == 1) "(buffer)" else invoke.data.take(80),
                         )
                         val message =
                             if (invoke.type ==
@@ -774,7 +780,8 @@ class KcefWebViewProvider(
     }
 
     private class RenderHandler : CefRenderHandlerAdapter() {
-        override fun getViewRect(browser: CefBrowser): Rectangle = Rectangle(0, 0, WIDTH, HEIGHT)
+        override fun getViewRect(browser: CefBrowser): Rectangle =
+            Rectangle(0, 0, WIDTH, HEIGHT)
 
         override fun onPaint(
             browser: CefBrowser,
@@ -1040,11 +1047,64 @@ class KcefWebViewProvider(
         requestId: Long,
         callback: VisualStateCallback,
     ) {
-        // TODO: Implement this properly
-        // for now, we cannot implement this, since CEF does not expose RenderHost::InsertVisualStateCallback
-        // https://source.chromium.org/chromium/chromium/src/+/main:android_webview/browser/aw_contents.cc;l=1463-1470;drc=596efb9363f44340caa548d3fcfbfb8242abfec2
-        // At the moment, it is only used as a fast-path for turnstile resolution, with a timeout,
-        // so we can just not call the callback and be fine
+        // Android fires this once all DOM changes made before the call are visible.
+        // We render offscreen, so the closest equivalent is a round-trip through the
+        // renderer process: once a trivial script returns, everything queued before it
+        // has been processed.
+        val b = browser
+        if (b == null) {
+            handler.post { callback.onComplete(requestId) }
+            return
+        }
+        b.evaluateJavaScript("0") {
+            handler.post { callback.onComplete(requestId) }
+        }
+    }
+
+    override fun dispatchTouchEvent(event: CompatMotionEvent): Boolean {
+        val b = browser ?: return false
+        val masked = event.actionMasked
+        val type =
+            when (masked) {
+                CompatMotionEvent.ACTION_DOWN, CompatMotionEvent.ACTION_POINTER_DOWN -> CefTouchEvent.EventType.PRESSED
+                CompatMotionEvent.ACTION_UP, CompatMotionEvent.ACTION_POINTER_UP -> CefTouchEvent.EventType.RELEASED
+                CompatMotionEvent.ACTION_MOVE -> CefTouchEvent.EventType.MOVED
+                CompatMotionEvent.ACTION_CANCEL -> CefTouchEvent.EventType.CANCELLED
+                else -> return false
+            }
+        if (masked == CompatMotionEvent.ACTION_DOWN) {
+            b.setFocus(true)
+        }
+        // Android coordinates are device pixels; CEF wants view (DIP) coordinates
+        val density = CompatResources.DENSITY
+        val isPointerAction = masked == CompatMotionEvent.ACTION_POINTER_DOWN || masked == CompatMotionEvent.ACTION_POINTER_UP
+        for (i in 0 until event.pointerCount) {
+            // For POINTER_DOWN/UP only the pointer at actionIndex changes state
+            val eventType = if (isPointerAction && i != event.actionIndex) CefTouchEvent.EventType.MOVED else type
+            val tool =
+                when (event.getToolType(i)) {
+                    CompatMotionEvent.TOOL_TYPE_MOUSE -> CefTouchEvent.PointerType.MOUSE
+                    CompatMotionEvent.TOOL_TYPE_STYLUS -> CefTouchEvent.PointerType.PEN
+                    CompatMotionEvent.TOOL_TYPE_ERASER -> CefTouchEvent.PointerType.ERASER
+                    else -> CefTouchEvent.PointerType.TOUCH
+                }
+            b.sendTouchEvent(
+                CefTouchEvent(
+                    event.getPointerId(i),
+                    event.getX(i) / density,
+                    event.getY(i) / density,
+                    event.getTouchMajor(i) / 2 / density,
+                    event.getTouchMinor(i) / 2 / density,
+                    event.getOrientation(i),
+                    event.getPressure(i),
+                    eventType,
+                    0,
+                    tool,
+                ),
+            )
+        }
+        Log.v(TAG, "Dispatched touch $event")
+        return true
     }
 
     override fun clearView(): Unit = throw RuntimeException("Stub!")
@@ -1811,19 +1871,21 @@ class KcefWebViewProvider(
 
     private suspend fun setUserAgent() {
         val ua = settings.userAgentString ?: return
-        val args =
-            buildJsonObject {
-                put("userAgent", ua)
-                settings.getUserAgentMetadata()?.let {
-                    Log.d(TAG, "Using user-agent $ua with metadata $it")
-                    put("userAgentMetadata", Json.encodeToJsonElement(it))
-                }
-            }
+        val args = KcefWebSettings.userAgentOverrideArgs(ua, settings.getUserAgentMetadata())
+        Log.d(TAG, "Using user-agent override $args")
         runCatching {
             val res = browser!!.devToolsClient.executeDevToolsMethod("Emulation.setUserAgentOverride", args.toString()).await()
             Log.v(TAG, "Successfully set user agent: $res")
+            if (KcefWebSettings.isMobileUserAgent(ua)) {
+                // A phone has touch points; a mobile User-Agent without them is another giveaway
+                browser!!
+                    .devToolsClient
+                    .executeDevToolsMethod("Emulation.setTouchEmulationEnabled", """{"enabled":true,"maxTouchPoints":5}""")
+                    .await()
+            }
         }.exceptionOrNull()?.let {
             Log.e(TAG, "Failed to set user agent", it)
         }
     }
+
 }
