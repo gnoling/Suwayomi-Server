@@ -510,7 +510,7 @@ object Manga {
      * A cover the user placed in [ApplicationDirs.customThumbnailsRoot] as `<mangaId>.<ext>`. Source
      * thumbnails are often tiny; refreshing the manga's metadata never touches this file.
      */
-    private fun getCustomThumbnailFile(mangaId: Int): File? =
+    fun getCustomThumbnailFile(mangaId: Int): File? =
         customThumbnailExtensions
             .map { File(applicationDirs.customThumbnailsRoot, "$mangaId.$it") }
             .firstOrNull { it.isFile }
