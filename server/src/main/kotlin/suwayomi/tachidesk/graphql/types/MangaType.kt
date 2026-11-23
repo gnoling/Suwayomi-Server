@@ -89,7 +89,9 @@ class MangaType(
         row[MangaTable.sourceReference],
         row[MangaTable.url],
         CustomTitles.displayTitle(row[MangaTable.id].value, row[MangaTable.title]),
-        row[MangaTable.thumbnail_url]?.let { MangaList.proxyThumbnailUrl(row[MangaTable.id].value) },
+        // a custom cover stands in when the source gives none
+        (row[MangaTable.thumbnail_url] ?: Manga.getCustomThumbnailFile(row[MangaTable.id].value))
+            ?.let { MangaList.proxyThumbnailUrl(row[MangaTable.id].value) },
         Manga.getThumbnailLastFetched(row[MangaTable.id].value, row[MangaTable.thumbnailUrlLastFetched]),
         row[MangaTable.initialized],
         row[MangaTable.artist],
